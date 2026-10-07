@@ -21,7 +21,25 @@ About 9.5 times more data than the screen uses, on a mobile connection, on the m
 | REST, summary in the list and detail on `GET /trips/{id}`, with `?include=` | small list, cacheable URLs, simple to rate-limit and log | the server decides the shapes; a new screen may need a new field |
 | GraphQL | the client asks for exactly its fields; one round trip for nested data | a new server layer, harder caching, query-cost limits needed, N+1 risk in resolvers |
 
-**Decision: REST with a summary list and `include`.** There are two clients (rider app, driver app) built by the same team, and a handful of screens. The over-fetching is fixed by designing the list response for the screen. GraphQL earns its cost when many different clients need many different shapes, which is not this product today.
+**The same need in GraphQL**
+
+```graphql
+query TripHistory($after: String) {
+  me {
+    trips(first: 20, after: $after) {
+      edges { node { id status requestedAt dropoffAddress driverName
+                     finalFare { amountMinor currency } } }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}
+```
+
+It would return exactly those seven fields per trip, about the 4.8 KB measured above, and nothing else.
+
+**Decision: REST with a summary list and `include`.** There are two clients (rider app, driver app) built by the same team, and a handful of screens. The over-fetching is fixed by designing the list response for the screen. GraphQL earns its cost when many different clients need many different shapes, which is not this product today. This follows the class guidance: REST for an MVP.
+
+**When I would switch.** Not at a user count. Trip history costs the same per rider at 1,000 users or 1,000,000, because the response is already trimmed. The trigger is the number of *different shapes* clients need: when a third or fourth client (a web dashboard, a partner integration, a support tool) starts asking for its own combination of trip, driver, payment and review fields, and I find myself adding a fourth `include` option or a second purpose-built endpoint for the same data. At that point the server is hand-writing what GraphQL gives for free.
 
 The denormalised `driver_name_snapshot` is what makes the summary a single-table, single-index read.
 

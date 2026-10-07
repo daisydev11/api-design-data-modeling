@@ -139,3 +139,49 @@ No amount in the request: it is always the trip's `final_fare_minor`. `status` m
 - `limit` defaults to 20, is clamped to 100. An unreadable cursor or unknown `status` is `400`.
 - List items are a summary. The full trip is `GET /api/v1/trips/{id}`, which can take `?include=payments,reviews`.
 - An empty history is `200` with `"data": []`, never `404`.
+
+## Request body fields
+
+| Endpoint | Field | Type | Required |
+| --- | --- | --- | --- |
+| `POST /trips` | `pickup.lat`, `dropoff.lat` | number, -90 to 90 | yes |
+| | `pickup.lng`, `dropoff.lng` | number, -180 to 180 | yes |
+| | `pickup.address`, `dropoff.address` | string, 1 to 200 chars | yes |
+| `POST /trips/{id}/complete` | `distanceMetres` | integer ≥ 0 | yes |
+| | `durationSeconds` | integer ≥ 0 | yes |
+| `POST /trips/{id}/payments` | `paymentMethodId` | string | yes |
+| `POST /trips/{id}/cancel` | `reason` | string, up to 300 chars | no |
+| `POST /trips/{id}/reviews` | `rating` | integer 1 to 5 | yes |
+| | `comment` | string, up to 1000 chars | no |
+| `POST /users` | `phone` | string, E.164 | yes |
+| | `fullName` | string | yes |
+| | `email` | string | no |
+| `POST /drivers` | `licenceNumber` | string | yes |
+| `POST /drivers/me/vehicles` | `plateNumber`, `make`, `model`, `colour` | string | yes |
+| | `year` | integer 1990 to 2100 | yes |
+
+## Basic operations for each entity
+
+All return the standard envelope and the standard errors (`401`, `404`, `422`, `429`). `GET`, `PATCH` with the same body, and `DELETE` are idempotent by nature; every `POST` takes an `Idempotency-Key`.
+
+| Entity | Endpoints | Notes |
+| --- | --- | --- |
+| User | `POST /users`, `GET /users/me`, `PATCH /users/me`, `DELETE /users/me` | `409 PHONE_IN_USE`. Delete is a soft delete; `409 TRIP_ACTIVE` if a trip is under way |
+| Driver | `POST /drivers`, `GET /drivers/me`, `PATCH /drivers/me` (`isOnline`), `GET /drivers/{id}` (public card: name, rating, vehicle) | `409 ALREADY_A_DRIVER`, `409 LICENCE_IN_USE`, `409 DRIVER_NOT_ACTIVE` when going online unapproved |
+| Vehicle | `POST /drivers/me/vehicles`, `GET /drivers/me/vehicles`, `PATCH /drivers/me/vehicles/{id}` (`isActive`), `DELETE …/{id}` | `409 PLATE_IN_USE`. Activating one deactivates the other. Soft delete |
+| Trip | `POST /trips`, `GET /trips`, `GET /trips/{id}`, plus the action endpoints `accept`, `arrive`, `start`, `complete`, `cancel` | No `PATCH` and no `DELETE`: status changes only through named actions, and trips are never deleted |
+| Trip offer | `GET /driver/offers`, `POST /trips/{id}/accept`, `POST /trips/{id}/decline` | Created by dispatch, not by clients |
+| Payment | `POST /trips/{id}/payments`, `GET /trips/{id}/payments`, `GET /payments/{id}` | No update or delete. A refund is a new action, not an edit |
+| Review | `POST /trips/{id}/reviews`, `GET /drivers/{id}/reviews`, `PATCH /reviews/{id}`, `DELETE /reviews/{id}` | `409 TRIP_NOT_COMPLETED`, `409 ALREADY_REVIEWED`. Soft delete |
+
+## The list contract, on every list endpoint
+
+`limit` (default 20, max 100, larger values clamped), `cursor`, `sort`, `order` (`asc` or `desc`). An unknown `sort` or filter value is `400`, never ignored. Response `meta` is always `{ limit, hasMore, nextCursor }`.
+
+| List | Filters | Sort fields (default first) |
+| --- | --- | --- |
+| `GET /trips` | `status`, `from`, `to` (dates) | `requestedAt` desc, `finalFare` |
+| `GET /driver/offers` | none: always open and unexpired | `offeredAt` desc |
+| `GET /drivers/me/vehicles` | `isActive` | `createdAt` desc |
+| `GET /trips/{id}/payments` | `status` | `createdAt` desc |
+| `GET /drivers/{id}/reviews` | `minRating`, `maxRating` | `createdAt` desc, `rating` |
