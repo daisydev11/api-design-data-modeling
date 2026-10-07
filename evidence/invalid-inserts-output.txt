@@ -1,0 +1,29 @@
+Fixture: this rider has one trip, in progress:
+                  id                  |   status    
+--------------------------------------+-------------
+ 0432ec5c-9d5b-4154-b808-406f389814b6 | in_progress
+(1 row)
+
+
+=== 1. A second active trip for a rider who already has one in progress ===
+psql:sql/04_invalid_inserts.sql:34: ERROR:  duplicate key value violates unique constraint "uq_trips_one_active_per_rider"
+DETAIL:  Key (rider_id)=(45778f4d-066a-4a01-9f4e-4b7dad9cc2ab) already exists.
+
+=== 2. Cancelling a trip that is already in progress (forbidden transition) ===
+psql:sql/04_invalid_inserts.sql:40: ERROR:  Illegal trip status transition: in_progress -> cancelled
+CONTEXT:  PL/pgSQL function trips_enforce_transition() line 19 at RAISE
+
+=== 3. A review on a trip that was never completed ===
+psql:sql/04_invalid_inserts.sql:46: ERROR:  insert or update on table "reviews" violates foreign key constraint "fk_reviews_completed_trip"
+DETAIL:  Key (trip_id, trip_status)=(1e09a3ed-72b6-4170-8718-3e3b331713d2, completed) is not present in table "trips".
+
+=== 4. A second successful payment for a trip that is already paid ===
+psql:sql/04_invalid_inserts.sql:53: ERROR:  duplicate key value violates unique constraint "uq_payments_one_success_per_trip"
+DETAIL:  Key (trip_id)=(0004b173-6328-4449-9048-44176d874c7b) already exists.
+
+=== Nothing was written ===
+ active_trips_for_rider | trip_status | reviews_on_requested_trip | successful_payments 
+------------------------+-------------+---------------------------+---------------------
+                      1 | in_progress |                         0 |                   1
+(1 row)
+

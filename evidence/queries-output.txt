@@ -1,0 +1,113 @@
+Pager usage is off.
+BEGIN
+
+=== ACTION 1: a rider requests a trip ===
+INSERT 0 1
+               trip_id                |  status   | estimated_fare_minor 
+--------------------------------------+-----------+----------------------
+ 34379ada-ee89-4da5-95c7-4011d1ea8125 | requested |               462500
+(1 row)
+
+INSERT 0 1
+
+=== ACTION 2: the driver looks at their open offers, and accepts one ===
+               trip_id                |     pickup_address     |    dropoff_address     | estimated_fare_minor | currency |          expires_at           
+--------------------------------------+------------------------+------------------------+----------------------+----------+-------------------------------
+ 34379ada-ee89-4da5-95c7-4011d1ea8125 | 12 Awolowo Road, Ikoyi | 45 Allen Avenue, Ikeja |               462500 | NGN      | 2026-10-07 06:52:28.543295+00
+ 6309a970-0ad3-40e6-a4de-a42d8eab93dc | 20 Marina Road         | 20 Allen Avenue        |               205000 | NGN      | 2026-10-07 07:01:58.168382+00
+(2 rows)
+
+UPDATE 1
+  status  | driver_name_snapshot |        vehicle_snapshot        
+----------+----------------------+--------------------------------
+ accepted | Tunde Okafor         | Honda Civic, black, ABJ-001-BA
+(1 row)
+
+UPDATE 1
+
+=== ACTION 3: the driver arrives, starts, and completes the trip (the fare is fixed here) ===
+UPDATE 1
+UPDATE 1
+  status   | distance_m | duration_s | base_fare_minor | per_km_minor | per_minute_minor | surge_bp | final_fare_minor | currency 
+-----------+------------+------------+-----------------+--------------+------------------+----------+------------------+----------
+ completed |      21400 |       2340 |           50000 |        15000 |             2500 |    12500 |           585625 | NGN
+(1 row)
+
+UPDATE 1
+The status history the trigger recorded:
+  from_status   |   to_status    
+----------------+----------------
+                | requested
+ requested      | accepted
+ accepted       | driver_arrived
+ driver_arrived | in_progress
+ in_progress    | completed
+(5 rows)
+
+
+=== ACTION 4: the rider pays ===
+INSERT 0 1
+  status   | amount_minor | currency 
+-----------+--------------+----------
+ succeeded |       585625 | NGN
+(1 row)
+
+UPDATE 1
+
+=== ACTION 5: the rider views their trip history (first page) ===
+                  id                  |    requested_at     |  status   |    dropoff_address     | final_fare_minor | currency | driver_name_snapshot 
+--------------------------------------+---------------------+-----------+------------------------+------------------+----------+----------------------
+ 34379ada-ee89-4da5-95c7-4011d1ea8125 | 2026-10-07 06:51:59 | completed | 45 Allen Avenue, Ikeja |           585625 | NGN      | Tunde Okafor
+ 65306ef4-56ab-4292-87aa-07b9edb21d9b | 2026-10-05 16:43:27 | completed | 4 Ikorodu Road         |           558947 | NGN      | Emeka Uche
+ 1444b29c-1c92-411a-810b-d641efed1843 | 2026-09-25 08:51:17 | cancelled | 11 Bourdillon Road     |                  | NGN      | 
+ 7d34e697-4710-464d-ba88-29222f7d0ccf | 2026-09-13 04:55:07 | completed | 30 Akin Adesola Street |           584023 | NGN      | Yusuf Balogun
+ 42ee54f2-d557-4388-adc9-82e7f75d1a70 | 2026-09-04 16:07:01 | completed | 6 Bourdillon Road      |           201655 | NGN      | Fatima Lawal
+(5 rows)
+
+
+=== QUERY PLAN, heaviest query 1: rider trip history (30,021 trips in the table) ===
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
+ Limit (actual rows=18 loops=1)
+   ->  Sort (actual rows=18 loops=1)
+         Sort Key: requested_at DESC, id DESC
+         Sort Method: quicksort  Memory: 27kB
+         ->  Bitmap Heap Scan on trips t (actual rows=18 loops=1)
+               Recheck Cond: (rider_id = '45778f4d-066a-4a01-9f4e-4b7dad9cc2ab'::uuid)
+               Heap Blocks: exact=18
+               ->  Bitmap Index Scan on idx_trips_rider_requested_at (actual rows=22 loops=1)
+                     Index Cond: (rider_id = '45778f4d-066a-4a01-9f4e-4b7dad9cc2ab'::uuid)
+(9 rows)
+
+
+=== QUERY PLAN, heaviest query 2: a driver's open offers with trip details (9,023 offers in the table) ===
+                                               QUERY PLAN                                               
+--------------------------------------------------------------------------------------------------------
+ Limit (actual rows=1 loops=1)
+   InitPlan 1 (returns $0)
+     ->  Limit (actual rows=1 loops=1)
+           ->  Index Only Scan using idx_trip_offers_driver_open on trip_offers (actual rows=1 loops=1)
+                 Heap Fetches: 1
+   ->  Nested Loop (actual rows=1 loops=1)
+         ->  Index Scan using idx_trip_offers_driver_open on trip_offers o (actual rows=1 loops=1)
+               Index Cond: (driver_id = $0)
+               Filter: (expires_at > now())
+         ->  Index Scan using uq_trips_id_status on trips t (actual rows=1 loops=1)
+               Index Cond: (id = o.trip_id)
+(11 rows)
+
+
+=== For comparison: the same history query with its index removed ===
+DROP INDEX
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Limit (actual rows=18 loops=1)
+   ->  Sort (actual rows=18 loops=1)
+         Sort Key: requested_at DESC, id DESC
+         Sort Method: quicksort  Memory: 27kB
+         ->  Seq Scan on trips t (actual rows=18 loops=1)
+               Filter: (rider_id = '45778f4d-066a-4a01-9f4e-4b7dad9cc2ab'::uuid)
+               Rows Removed by Filter: 30003
+(7 rows)
+
+ROLLBACK
