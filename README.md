@@ -44,7 +44,7 @@ createdb ridehail
 export DATABASE_URL=postgresql://localhost/ridehail
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/01_schema.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/02_seed.sql          # about 10 seconds
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/02_seed.sql
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f sql/03_queries.sql       # five actions + query plans
 psql "$DATABASE_URL" -f sql/04_invalid_inserts.sql                  # errors are the expected output
 psql "$DATABASE_URL" -f sql/05_rating_cache_check.sql
