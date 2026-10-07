@@ -318,12 +318,18 @@ CREATE TRIGGER trg_reviews_updated_at BEFORE UPDATE ON reviews FOR EACH ROW EXEC
 
 -- Keeps drivers.rating_sum / rating_count equal to the rider-written reviews.
 CREATE FUNCTION reviews_update_driver_rating() RETURNS trigger AS $$
+DECLARE
+  old_counts boolean := TG_OP = 'UPDATE' AND OLD.author = 'rider' AND OLD.deleted_at IS NULL;
+  new_counts boolean := NEW.author = 'rider' AND NEW.deleted_at IS NULL;
+  d_sum   integer := (CASE WHEN new_counts THEN NEW.rating ELSE 0 END) - (CASE WHEN old_counts THEN OLD.rating ELSE 0 END);
+  d_count integer := (CASE WHEN new_counts THEN 1 ELSE 0 END) - (CASE WHEN old_counts THEN 1 ELSE 0 END);
 BEGIN
-  IF NEW.author = 'rider' THEN
-    UPDATE drivers d SET rating_sum = d.rating_sum + NEW.rating, rating_count = d.rating_count + 1
+  IF d_sum <> 0 OR d_count <> 0 THEN
+    UPDATE drivers d SET rating_sum = d.rating_sum + d_sum, rating_count = d.rating_count + d_count
     FROM trips t WHERE t.id = NEW.trip_id AND d.id = t.driver_id;
   END IF;
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
-CREATE TRIGGER trg_reviews_update_driver_rating AFTER INSERT ON reviews FOR EACH ROW EXECUTE FUNCTION reviews_update_driver_rating();
+-- Counts a new review, a changed rating, and a soft-deleted (or restored) review.
+CREATE TRIGGER trg_reviews_update_driver_rating AFTER INSERT OR UPDATE OF rating, deleted_at ON reviews FOR EACH ROW EXECUTE FUNCTION reviews_update_driver_rating();

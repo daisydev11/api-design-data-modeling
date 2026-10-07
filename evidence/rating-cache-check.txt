@@ -1,0 +1,12 @@
+After seeding: drivers whose cached totals differ from their reviews
+ mismatches | drivers | cached_reviews 
+------------+---------+----------------
+          0 |     300 |          16339
+(1 row)
+
+After changing 50 ratings and soft-deleting 50 reviews
+ mismatches | drivers | cached_reviews 
+------------+---------+----------------
+          0 |     300 |          16289
+(1 row)
+
